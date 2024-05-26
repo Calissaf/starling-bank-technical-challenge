@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using StarlingRoundUpChallenge;
 using StarlingRoundUpChallenge.Helpers;
@@ -7,13 +8,13 @@ using StarlingRoundUpChallenge.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options => { options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()); });
 // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-ConfigurationManager configuration = builder.Configuration;
+var configuration = builder.Configuration;
 
 // add custom services
 builder.Services.AddScoped<IApiHelper, ApiHelper>();
@@ -38,11 +39,8 @@ builder.Services.AddHttpClient<IApiHelper, ApiHelper>((provider, client) =>
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+app.UseSwagger(); 
+app.UseSwaggerUI();
 
 app.UseHttpsRedirection();
 

@@ -1,18 +1,17 @@
-using StarlingRoundUpChallenge.Requests;
-using StarlingRoundUpChallenge.Response;
+using StarlingRoundUpChallenge.Models.StarlingApi;
 
 namespace StarlingRoundUpChallenge.Helpers;
 
 public interface IApiHelper
 {
-    public Task<Account?> GetAccounts();
+    public Task<Account?> GetAccountsAsync();
 
-    public Task<Feed?> GetSettledTransactionsBetween(string accountUid, string minTransactionTimestamp,
+    public Task<Feed?> GetSettledTransactionsBetweenAsync(string accountUid, string minTransactionTimestamp,
         string maxTransactionTimestamp);
 
-    public Task<CreateOrUpdateSavingsGoalResponseV2?> PutSavingsGoals(string accountUid,
+    public Task<CreateOrUpdateSavingsGoalResponseV2?> PutSavingsGoalsAsync(string accountUid,
         SavingsGoalRequestV2 savingsGoalRequestV2);
 
-    public Task<SavingsGoalTransferResponse?> PutMoneySavingsGoal(string accountUid, string savingsGoalUid,
+    public Task<SavingsGoalTransferResponse?> PutMoneySavingsGoalAsync(string accountUid, string savingsGoalUid,
         string transferUid, TopUpRequestV2 topUpRequestV2);
 }

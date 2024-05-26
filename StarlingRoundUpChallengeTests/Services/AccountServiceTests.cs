@@ -1,352 +1,425 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using StarlingRoundUpChallenge.Helpers;
-using StarlingRoundUpChallenge.Requests;
-using StarlingRoundUpChallenge.Response;
+using StarlingRoundUpChallenge.Models.Requests;
+using StarlingRoundUpChallenge.Models.Response;
+using StarlingRoundUpChallenge.Models.StarlingApi;
 using StarlingRoundUpChallenge.Services;
 
 namespace StarlingRoundUpChallengeTests.Services;
 
 public class AccountServiceTests
 {
-    private AccountService accountService;
-    private Mock<IApiHelper> mockApiHelper;
-    private Mock<ILogger<AccountService>> mocklogger;
-    private static readonly RoundUpBetweenRequest defaultRequest = new()
+    private readonly AccountService _accountService;
+    private readonly Mock<IApiHelper> _mockApiHelper;
+    private static readonly RoundUpBetweenRequest DefaultRequest = new()
     {
-        MinTransactionTimestamp = "2024-05-11T00:00:00.000Z",
-        MaxTransactionTimestamp = "2024-05-11T00:00:00.000Z",
-        AccountCurrency = "GBP",
+        MinTransactionTimestamp = DateTime.Parse( "2024-05-11T00:00:00.000Z"),
+        MaxTransactionTimestamp = DateTime.Parse("2024-05-12T00:00:00.000Z"),
+        AccountCurrency = RoundUpBetweenRequest.AccountCurrencyTypes.GBP,
         SavingsGoalRequest = new SavingsGoalRequest
         {
-            SavingsGoalName = "test",
+            SavingsGoalName = "test"
         }
     };
 
-
     public AccountServiceTests()
     {
-        mockApiHelper = new Mock<IApiHelper>();
-        mocklogger = new Mock<ILogger<AccountService>>();
-        accountService = new AccountService(mockApiHelper.Object, mocklogger.Object);
+        _mockApiHelper = new Mock<IApiHelper>();
+        _accountService = new AccountService(_mockApiHelper.Object);
     }
     
-    // get accounts tests
-    /*
-     * should call get accounts//
-     * when get accounts returns null should return http bad request with error message//
-     * when get accounts returns no accounts with matching currency should return http bad request with error message//
-     */
-    
+    #region RequestValidation
     [Fact]
-    public void RoundUp_CallsGetAccounts()
+    public async Task RoundUp_WhenRequestMinTimeGreaterThanMaxTime_ReturnBadRequest()
     {
         Setup();
         
-        accountService.RoundUp(defaultRequest);
-        mockApiHelper.Verify(x => x.GetAccounts(), Times.Once);
-    }
-
-    [Fact]
-    public void RoundUp_WhenGetAccountsReturnsNull_ReturnBadRequest()
-    {
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{message = "Error occured getting accounts"}}, success = false});
-        var result = accountService.RoundUp(defaultRequest);
+        var request = new RoundUpBetweenRequest {
+            MinTransactionTimestamp = DateTime.Parse( "2024-05-11T00:00:00.000Z"),
+            MaxTransactionTimestamp = DateTime.Parse("2024-05-11T00:00:00.000Z"),
+            AccountCurrency = RoundUpBetweenRequest.AccountCurrencyTypes.GBP,
+            SavingsGoalRequest = new SavingsGoalRequest
+            {
+                SavingsGoalName = "test"
+            }
+        };
+        
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = "Min timestamp must be before max timestamp"}}});
+        
+        var result = await _accountService.RoundUp(request);
 
         result.Should().BeEquivalentTo(expected);
     }
     
     [Fact]
-    public void RoundUp_WhenNoAccountsWithRequestedCurrencyType_ReturnBadRequest()
+    public async Task RoundUp_WhenRequestBase64PhotoInValid_ReturnBadRequest()
     {
-        mockApiHelper.Setup(x => x.GetAccounts()).ReturnsAsync(new Account{accounts = new []{new Accounts{currency = "EUR"}}});
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{message = $"Account with currency type: {defaultRequest.AccountCurrency} not found"}}, success = false});
+        Setup();
         
-        var result = accountService.RoundUp(defaultRequest);
+        var request = new RoundUpBetweenRequest {
+            MinTransactionTimestamp = DateTime.Parse( "2024-05-11T00:00:00.000Z"),
+            MaxTransactionTimestamp = DateTime.Parse("2024-05-12T00:00:00.000Z"),
+            AccountCurrency = RoundUpBetweenRequest.AccountCurrencyTypes.GBP,
+            SavingsGoalRequest = new SavingsGoalRequest
+            {
+                SavingsGoalName = "test",
+                Base64EncodedPhoto = "****"
+            }
+        };
+        
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = "Invalid image"}}});
+        
+        var result = await _accountService.RoundUp(request);
+
+        result.Should().BeEquivalentTo(expected);
+    }
+    #endregion
+
+    #region GetAccounts
+    [Fact]
+    public async Task RoundUp_CallsGetAccounts()
+    {
+        Setup();
+        
+        await _accountService.RoundUp(DefaultRequest);
+        _mockApiHelper.Verify(x => x.GetAccountsAsync(), Times.Once);
+    }
+
+    [Fact]
+    public async Task RoundUp_WhenGetAccountsReturnsNull_ReturnBadRequest()
+    {
+        var errorResponse = new ProblemDetails
+        {
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured getting accounts"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        
+        var result = await _accountService.RoundUp(DefaultRequest);
 
         result.Should().BeEquivalentTo(expected);
     }
     
-    //get feed items 
-    /*
-     * calls get feed items //
-     * when get feed items returns null return http bad request //
-     * if feed items empty account savings account created with 0 //
-     * if feed items exist calculate roundup and transfer account with that money //
-     */
-    
     [Fact]
-    public void RoundUp_CallsGetSettledTransactionsBetween()
+    public async Task RoundUp_WhenNoAccountsWithRequestedCurrencyType_ReturnBadRequest()
+    {
+        _mockApiHelper.Setup(x => x.GetAccountsAsync()).ReturnsAsync(new Account{Accounts = new []{new Accounts{Currency = "EUR"}}});
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = $"Account with currency type: {DefaultRequest.AccountCurrency} not found"}}, Success = false});
+        
+        var result = await _accountService.RoundUp(DefaultRequest);
+
+        result.Should().BeEquivalentTo(expected);
+    }
+    #endregion
+
+    #region GetFeedItems 
+    [Fact]
+    public async Task RoundUp_CallsGetSettledTransactionsBetween()
     {
         Setup();
         
-        accountService.RoundUp(defaultRequest);
-        mockApiHelper.Verify(x => x.GetSettledTransactionsBetween(It.IsAny<string>(), defaultRequest.MinTransactionTimestamp, defaultRequest.MaxTransactionTimestamp), Times.Once);
+        await _accountService.RoundUp(DefaultRequest);
+        _mockApiHelper.Verify(x => x.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), DefaultRequest.MinTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"), DefaultRequest.MaxTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'")), Times.Once);
     }
     
     [Fact]
-    public void RoundUp_WhenGetSettledTransactionsBetweenReturnsNull_ReturnBadRequest()
+    public async Task RoundUp_WhenGetSettledTransactionsBetweenReturnsNull_ReturnBadRequest()
     {
         Setup();
-        mockApiHelper
-            .Setup(x => x.GetSettledTransactionsBetween(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+        _mockApiHelper
+            .Setup(x => x.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync((Feed?)null);
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{message = "Error occured getting feed items"}}, success = false});
-        var result = accountService.RoundUp(defaultRequest);
+        
+        var errorResponse = new ProblemDetails
+        {
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured getting feed items"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
 
         result.Should().BeEquivalentTo(expected);
     }
     
     [Fact]
-    public void RoundUp_WhenNoSettledTransactionsOccur_CreateSavingsAccountWithEmptyBalance()
+    public async Task RoundUp_WhenNoSettledTransactionsOccur_CreateSavingsAccountWithEmptyBalance()
     {
         Setup();
-        mockApiHelper
-            .Setup(x => x.GetSettledTransactionsBetween(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
-            .ReturnsAsync(new Feed{feedItems = Array.Empty<FeedItems>()});
-        accountService.RoundUp(defaultRequest);
+        _mockApiHelper
+            .Setup(x => x.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+            .ReturnsAsync(new Feed{FeedItems = []});
+        var expected = new RoundUpBetweenResponse
+        {
+            SavingsGoalUid = "123",
+            Balance = new CurrencyAndAmount{Currency = DefaultRequest.AccountCurrency.ToString(), MinorUnits = 0},
+            Success = true
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
 
-        mockApiHelper.Verify(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(),It.IsAny<string>(), It.Is<TopUpRequestV2>(topUpRequestV2 => topUpRequestV2.CurrencyAndAmount.minorUnits == 0)), Times.Once);
+        _mockApiHelper.Verify(x => x.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()), Times.Once);
+        _mockApiHelper.Verify(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>()), Times.Never);
+        result.Should().BeEquivalentTo(new OkObjectResult(expected));
     }
     
     [Fact]
-    public void RoundUp_WhenSettledTransactionsOccurForDefaultCategoryId_CreateSavingsAccountWithExpectedBalance()
+    public async Task RoundUp_WhenSettledTransactionsOccurForDefaultCategoryId_CreateSavingsAccountWithExpectedBalance()
     {
         Setup();
-        accountService.RoundUp(defaultRequest);
+        await _accountService.RoundUp(DefaultRequest);
         
-        mockApiHelper.Verify(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(),It.IsAny<string>(), It.Is<TopUpRequestV2>(topUpRequestV2 => topUpRequestV2.CurrencyAndAmount.minorUnits == 76)), Times.Once);
+        _mockApiHelper.Verify(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(),It.IsAny<string>(), It.Is<TopUpRequestV2>(topUpRequestV2 => topUpRequestV2.CurrencyAndAmount.MinorUnits == 76)), Times.Once);
     }
-    
-    //create savings goal
-    /*
-     * calls create savings goal //
-     * when create savings goal returns null return http bad request //
-     * when create savings goal success is false return http bad request //
-     */
+    #endregion
+
+    #region CreateSavingsGoal
     [Fact]
-    public void RoundUp_CallsPutSavingsGoals()
+    public async Task RoundUp_CallsPutSavingsGoals()
     {
         Setup();
         
-        accountService.RoundUp(defaultRequest);
-        mockApiHelper.Verify(x => x.PutSavingsGoals(It.IsAny<string>(), It.Is<SavingsGoalRequestV2>(v2 => v2.SavingsGoalName == defaultRequest.SavingsGoalRequest.SavingsGoalName && v2.currency == defaultRequest.AccountCurrency && v2.Base64EncodedPhoto == defaultRequest.SavingsGoalRequest.Base64EncodedPhoto)), Times.Once);
+        await _accountService.RoundUp(DefaultRequest);
+        _mockApiHelper.Verify(x => x.PutSavingsGoalsAsync(It.IsAny<string>(), It.Is<SavingsGoalRequestV2>(v2 => v2.SavingsGoalName == DefaultRequest.SavingsGoalRequest.SavingsGoalName && v2.Currency == DefaultRequest.AccountCurrency.ToString() && v2.Base64EncodedPhoto == DefaultRequest.SavingsGoalRequest.Base64EncodedPhoto)), Times.Once);
     }
     
     [Fact]
-    public void RoundUp_WhenPutSavingsGoalsIsNull_ReturnHttpBadRequest()
+    public async Task RoundUp_WhenPutSavingsGoalsIsNull_ReturnHttpBadRequest()
     {
         Setup();
 
-        mockApiHelper.Setup(x => x.PutSavingsGoals(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
+        _mockApiHelper.Setup(x => x.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
             .ReturnsAsync((CreateOrUpdateSavingsGoalResponseV2?)null);
-
-        var expected = new BadRequestObjectResult(new ErrorResponse
+        
+        var errorResponse = new ProblemDetails
         {
-            ErrorDetail = new[] { new ErrorDetail { message = "Error occured creating savings goal" } }, success = false
-        });
-        var result = accountService.RoundUp(defaultRequest);
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured creating savings goal"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
         
         result.Should().BeEquivalentTo(expected);
     }
     
     [Fact]
-    public void RoundUp_WhenPutSavingsGoalsSuccessIsFalse_ReturnHttpBadRequest()
+    public async Task RoundUp_WhenPutSavingsGoalsSuccessIsFalse_ReturnHttpBadRequest()
     {
         Setup();
 
-        mockApiHelper.Setup(x => x.PutSavingsGoals(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
-            .ReturnsAsync(new CreateOrUpdateSavingsGoalResponseV2{savingsGoalUid = It.IsAny<string>(), success = false});
+        _mockApiHelper.Setup(x => x.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
+            .ReturnsAsync(new CreateOrUpdateSavingsGoalResponseV2{SavingsGoalUid = It.IsAny<string>(), Success = false});
 
-        var expected = new BadRequestObjectResult(new ErrorResponse
+        var errorResponse = new ProblemDetails
         {
-            ErrorDetail = new[] { new ErrorDetail { message = "Error occured creating savings goal" } }, success = false
-        });
-        var result = accountService.RoundUp(defaultRequest);
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured creating savings goal"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
         
         result.Should().BeEquivalentTo(expected);
     }
-    
-    // add money to savings goal
-    /*
-     * calls put money savings goal //
-     * when response is null return http bad request //
-     * when response success is false return http bad request//
-     * when response success is true return ok
-     */
+    #endregion
+
+    #region AddMoneyToSavingsGoal
     [Fact]
-    public void RoundUp_CallsPutMoneySavingsGoals()
+    public async Task RoundUp_CallsPutMoneySavingsGoals()
     {
         Setup();
         
-        mockApiHelper.Setup(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>()))
+        _mockApiHelper.Setup(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>()))
             .ReturnsAsync(It.IsAny<SavingsGoalTransferResponse>());
         
-        accountService.RoundUp(defaultRequest);
-        mockApiHelper.Verify(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<TopUpRequestV2>(v2 => v2.CurrencyAndAmount.minorUnits == 76 && v2.CurrencyAndAmount.currency == defaultRequest.AccountCurrency)), Times.Once);
+        await _accountService.RoundUp(DefaultRequest);
+        _mockApiHelper.Verify(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.Is<TopUpRequestV2>(v2 => v2.CurrencyAndAmount.MinorUnits == 76 && v2.CurrencyAndAmount.Currency == DefaultRequest.AccountCurrency.ToString())), Times.Once);
     }
     
     [Fact]
-    public void RoundUp_WhenPutMoneySavingsGoalsIsNull_ReturnHttpBadRequest()
+    public async Task RoundUp_WhenPutMoneySavingsGoalsIsNull_ReturnHttpBadRequest()
     {
         Setup();
 
-        mockApiHelper
-            .Setup(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        _mockApiHelper
+            .Setup(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<TopUpRequestV2>())).ReturnsAsync((SavingsGoalTransferResponse?)null);
-        var expected = new BadRequestObjectResult(
-
-            new ErrorResponse
-            {
-                ErrorDetail = new []
-                {
-                    new ErrorDetail
-                    {
-                        message = "Error occured adding money to savings goal"
-                    }
-                },
-                success = false
-            }
-        );
-        var result = accountService.RoundUp(defaultRequest);
+        
+        var errorResponse = new ProblemDetails
+        {
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured adding money to savings goal"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
         
         result.Should().BeEquivalentTo(expected);
     }
     
     [Fact]
-    public void RoundUp_WhenPutMoneySavingsGoalsSuccessIsFalse_ReturnHttpBadRequest()
+    public async Task RoundUp_WhenPutMoneySavingsGoalsSuccessIsFalse_ReturnHttpBadRequest()
     {
         Setup();
 
-        mockApiHelper
-            .Setup(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<TopUpRequestV2>())).ReturnsAsync(new SavingsGoalTransferResponse{transferUid = It.IsAny<string>(), success = false});
-        var expected = new BadRequestObjectResult(
-
-            new ErrorResponse
-            {
-                ErrorDetail = new []
-                {
-                    new ErrorDetail
-                    {
-                        message = "Error occured adding money to savings goal"
-                    }
-                },
-                success = false
-            }
-        );
-        var result = accountService.RoundUp(defaultRequest);
+        _mockApiHelper
+            .Setup(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+                It.IsAny<TopUpRequestV2>())).ReturnsAsync(new SavingsGoalTransferResponse{TransferUid = It.IsAny<string>(), Success = false});
+        var errorResponse = new ProblemDetails
+        {
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = "Error occured adding money to savings goal"
+        };
+        var expected = new ObjectResult(errorResponse)
+        {
+            StatusCode = (int)HttpStatusCode.InternalServerError
+        };
+        var result = await _accountService.RoundUp(DefaultRequest);
         
         result.Should().BeEquivalentTo(expected);
     }
     
     [Fact]
-    public void RoundUp_WhenPutMoneySavingsGoalsSuccessIsTrue_ReturnHttpOk()
+    public async Task RoundUp_WhenPutMoneySavingsGoalsSuccessIsTrue_ReturnHttpOk() //ToDo check response body
     {
         Setup();
-
-        mockApiHelper
-            .Setup(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
-                It.IsAny<TopUpRequestV2>())).ReturnsAsync(new SavingsGoalTransferResponse{transferUid = It.IsAny<string>(), success = true});
+        
+        var expected = new RoundUpBetweenResponse
+        {
+            SavingsGoalUid = "123",
+            Balance = new CurrencyAndAmount{Currency = DefaultRequest.AccountCurrency.ToString() , MinorUnits = 76},
+            Success = true
+        };
        
-        var result = accountService.RoundUp(defaultRequest);
+        var result = await _accountService.RoundUp(DefaultRequest);
         
-        result.Should().BeEquivalentTo(new OkResult());
+        result.Should().BeEquivalentTo(new OkObjectResult(expected));
     }
+    #endregion
     
-    
-
     private void Setup()
     {
         //round up = 76
         var feed = new Feed
         {
-            feedItems = new[]
+            FeedItems = new[]
             {
                 new FeedItems
                 {
-                    categoryUid = "456",
-                    direction = "OUT",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "456",
+                    Direction = "OUT",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 300
+                        Currency = "GBP",
+                        MinorUnits = 300
                     }
                 },
                 new FeedItems
                 {
-                    categoryUid = "456",
-                    direction = "OUT",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "456",
+                    Direction = "OUT",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 250
+                        Currency = "GBP",
+                        MinorUnits = 250
                     }
                 },
                 new FeedItems
                 {
-                    categoryUid = "456",
-                    direction = "OUT",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "456",
+                    Direction = "OUT",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 375
+                        Currency = "GBP",
+                        MinorUnits = 375
                     }
                 },
                 new FeedItems
                 {
-                    categoryUid = "456",
-                    direction = "OUT",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "456",
+                    Direction = "OUT",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 399
+                        Currency = "GBP",
+                        MinorUnits = 399
                     }
                 },
                 new FeedItems
                 {
-                    categoryUid = "456",
-                    direction = "IN",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "456",
+                    Direction = "IN",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 399
+                        Currency = "GBP",
+                        MinorUnits = 399
                     }
                 },
+                new FeedItems
+                {
+                    CategoryUid = "456",
+                    Direction = "OUT",
+                    CurrencyAndAmount = new CurrencyAndAmount
+                    {
+                        Currency = "GBP",
+                        MinorUnits = 399
+                    },
+                    AssociatedFeedRoundUp = new AssociatedFeedRoundUp
+                    {
+                        GoalCategoryUid = "789"
+                    }
+                }
             }
         };
         
         var account = new Account
         {
-            accounts = new []
+            Accounts = new []
             {
                 new Accounts
                 {
-                    accountUid = "123",
-                    defaultCategory = "456",
-                    currency = "GBP"
+                    AccountUid = "123",
+                    DefaultCategory = "456",
+                    Currency = "GBP"
                 }
             }
         };
         var createSavingsGoalResponse = new CreateOrUpdateSavingsGoalResponseV2
         {
-            savingsGoalUid = "123",
-            success = true
+            SavingsGoalUid = "123",
+            Success = true
         };
         var savingsGoalTransferResponse = new SavingsGoalTransferResponse
         {
-            transferUid = "123",
-            success = true
+            TransferUid = "123",
+            Success = true
         };
 
-        mockApiHelper.Setup(x => x.GetAccounts()).ReturnsAsync(account);
-        mockApiHelper
-            .Setup(x => x.GetSettledTransactionsBetween(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+        _mockApiHelper.Setup(x => x.GetAccountsAsync()).ReturnsAsync(account);
+        _mockApiHelper
+            .Setup(x => x.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
             .ReturnsAsync(feed);
-        mockApiHelper.Setup(x => x.PutSavingsGoals(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
+        _mockApiHelper.Setup(x => x.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>()))
             .ReturnsAsync(createSavingsGoalResponse);
-        mockApiHelper
-            .Setup(x => x.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
+        _mockApiHelper
+            .Setup(x => x.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(),
                 It.IsAny<TopUpRequestV2>())).ReturnsAsync(savingsGoalTransferResponse);
     }
 }

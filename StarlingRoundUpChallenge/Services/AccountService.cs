@@ -1,138 +1,189 @@
+using System.Net;
 using Microsoft.AspNetCore.Mvc;
 using StarlingRoundUpChallenge.Helpers;
-using StarlingRoundUpChallenge.Requests;
-using StarlingRoundUpChallenge.Response;
+using StarlingRoundUpChallenge.Models.Requests;
+using StarlingRoundUpChallenge.Models.Response;
+using StarlingRoundUpChallenge.Models.StarlingApi;
 
 namespace StarlingRoundUpChallenge.Services;
 
-public class AccountService : IAccountService
+public class AccountService(IApiHelper apiHelper) : IAccountService
 {
-    //main method
-    /*
-     * should:
-     *  - take request body //
-     *  - call api helper methods //
-     *  - call private run calculation method //
-     *  - error handling
-     */
-
-    private readonly IApiHelper _apiHelper;
-    private ILogger<AccountService> _logger;
-
-    public AccountService(IApiHelper apiHelper, ILogger<AccountService> logger)
+    public async Task<ActionResult> RoundUp(RoundUpBetweenRequest request)
     {
-        _apiHelper = apiHelper;
-        _logger = logger;
-    }
-
-    public ActionResult RoundUp(RoundUpBetweenRequest request)
-    {
-        // get accountUid
-        var accounts =  _apiHelper.GetAccounts().Result;
-        if (accounts == null)
+        RoundUpBetweenResponse? response;
+        
+        //request validation
+        if (request.MinTransactionTimestamp >= request.MaxTransactionTimestamp)
         {
-            var errorResponse = GetErrorResponse(new List<string>{"Error occured getting accounts"});
+            var errorResponse = GetErrorResponse(["Min timestamp must be before max timestamp"]);
+            return new BadRequestObjectResult(errorResponse);
+        }
+
+        if (!string.IsNullOrEmpty(request.SavingsGoalRequest.Base64EncodedPhoto) && !ValidatePhoto(request.SavingsGoalRequest.Base64EncodedPhoto))
+        {
+            var errorResponse = GetErrorResponse(["Invalid image"]);
             return new BadRequestObjectResult(errorResponse);
         }
         
-        var account = GetAccount(accounts.accounts, request.AccountCurrency);
+        // get accountUid
+        var accounts =  await apiHelper.GetAccountsAsync();
+        if (accounts == null)
+        {
+            var errorResponse = GetInternalServerErrorResponse("Error occured getting accounts");
+            return new ObjectResult(errorResponse)
+            {
+                StatusCode = (int)HttpStatusCode.InternalServerError
+            };
+        }
+        
+        var account = GetAccountWithCurrencyType(accounts.Accounts, request.AccountCurrency.ToString());
 
         if (account == null)
         {
-            var errorResponse = GetErrorResponse(new List<string>
-                { $"Account with currency type: {request.AccountCurrency} not found" });
+            var errorResponse = GetErrorResponse([$"Account with currency type: {request.AccountCurrency} not found"]);
             return new BadRequestObjectResult(errorResponse);
         }
         
         // get transfer feed for default category
-        var feedItems = _apiHelper.GetSettledTransactionsBetween(account.accountUid,
-            request.MinTransactionTimestamp,
-            request.MaxTransactionTimestamp).Result?.feedItems.Where(x => x.categoryUid == account.defaultCategory).ToList();
-        
-        if (feedItems == null)
+        var allFeedItems = await apiHelper.GetSettledTransactionsBetweenAsync(account.AccountUid,
+            request.MinTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"),
+            request.MaxTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"));
+
+        if (allFeedItems == null)
         {
-            var errorResponse = GetErrorResponse(new List<string>
-                { "Error occured getting feed items" });
-            return new BadRequestObjectResult(errorResponse);
+            var errorResponse = GetInternalServerErrorResponse("Error occured getting feed items");
+            return new ObjectResult(errorResponse)
+            {
+                StatusCode = (int)HttpStatusCode.InternalServerError
+            };
         }
         
-        //ToDo: what if there's no feed items for that category
-        // should it still create a savings goal and transfer 0 into it?
+        var mainFeedItems = allFeedItems.FeedItems.Where(x => x.CategoryUid == account.DefaultCategory).ToList();
         
         //calculate roundups
         var roundUp = 0;
-        if (feedItems.Count != 0)
+        if (mainFeedItems.Count != 0)
         {
-            roundUp = GetRoundUpValue(feedItems);
+            roundUp = GetRoundUpValue(mainFeedItems);
         }
         
         //create savings goal
         var createSavingsGoalRequest = new SavingsGoalRequestV2
         {
             SavingsGoalName = request.SavingsGoalRequest.SavingsGoalName,
-            Target = request.SavingsGoalRequest.Target,
             Base64EncodedPhoto = request.SavingsGoalRequest.Base64EncodedPhoto,
-            currency = request.AccountCurrency
+            Currency = request.AccountCurrency.ToString()
         };
-        var createSavingsGoalResponse = _apiHelper.PutSavingsGoals(account.accountUid, createSavingsGoalRequest).Result;
-        if (createSavingsGoalResponse is not { success: true })
+        if (request.SavingsGoalRequest.Target !=null)
         {
-            var errorResponse = GetErrorResponse(new List<string>
-                { "Error occured creating savings goal" });
-            return new BadRequestObjectResult(errorResponse);
+            createSavingsGoalRequest.Target = new CurrencyAndAmount
+            {
+                Currency = request.AccountCurrency.ToString(),
+                MinorUnits = request.SavingsGoalRequest.Target.MinorUnits
+            };
+        }
+        var createSavingsGoalResponse = await apiHelper.PutSavingsGoalsAsync(account.AccountUid, createSavingsGoalRequest);
+        if (createSavingsGoalResponse is not { Success: true })
+        {
+            var errorResponse = GetInternalServerErrorResponse("Error occured creating savings goal");
+            return new ObjectResult(errorResponse)
+            {
+                StatusCode = (int)HttpStatusCode.InternalServerError
+            };
+        }
+
+        // returning ok as no money to add to savings goal
+        if (roundUp == 0)
+        {
+            response = new RoundUpBetweenResponse
+            {
+                SavingsGoalUid = createSavingsGoalResponse.SavingsGoalUid,
+                Balance = new CurrencyAndAmount{Currency = createSavingsGoalRequest.Currency, MinorUnits = roundUp},
+                Success = true
+            };
+            return new OkObjectResult(response);
         }
         
         // add money to savings goal
-        var transferUid = Guid.NewGuid().ToString(); //don't need to test this is unique as is first transaction for the savings goal so always will be
+        var transferUid = Guid.NewGuid().ToString(); //don't need to test is unique as is first transaction for the savings goal so always will be
         var topUpRequest = new TopUpRequestV2
         {
             CurrencyAndAmount = new CurrencyAndAmount
             {
-                currency = request.AccountCurrency,
-                minorUnits = roundUp
+                Currency = request.AccountCurrency.ToString(),
+                MinorUnits = roundUp
             }
         };
 
-        var savingsGoalTransferResponse = _apiHelper.PutMoneySavingsGoal(account.accountUid,
-            createSavingsGoalResponse.savingsGoalUid, transferUid, topUpRequest).Result;
-        if (savingsGoalTransferResponse is not { success: true })
+        var savingsGoalTransferResponse = await apiHelper.PutMoneySavingsGoalAsync(account.AccountUid,
+            createSavingsGoalResponse.SavingsGoalUid, transferUid, topUpRequest);
+        if (savingsGoalTransferResponse is not { Success: true })
         {
-            var errorResponse = GetErrorResponse(new List<string>
-                { "Error occured adding money to savings goal" });
-            return new BadRequestObjectResult(errorResponse);
+            var errorResponse = GetInternalServerErrorResponse("Error occured adding money to savings goal");
+            return new ObjectResult(errorResponse)
+            {
+                StatusCode = (int)HttpStatusCode.InternalServerError
+            };
         }
-
-        return new OkResult();
+        
+        response = new RoundUpBetweenResponse
+        {
+            SavingsGoalUid = createSavingsGoalResponse.SavingsGoalUid,
+            Balance = new CurrencyAndAmount{Currency = createSavingsGoalRequest.Currency, MinorUnits = roundUp},
+            Success = true
+        };
+        return new OkObjectResult(response);
     }
 
-    private static Accounts? GetAccount(Accounts[] accounts, string accountCurrency)
+    private static bool ValidatePhoto(string base64EncodedPhoto)
     {
-        return accounts.FirstOrDefault(account => account.currency == accountCurrency);
+        var buffer = new Span<byte>(new byte[base64EncodedPhoto.Length]);
+        return Convert.TryFromBase64String(base64EncodedPhoto, buffer, out _);
     }
 
+    private static Accounts? GetAccountWithCurrencyType(Accounts[] accounts, string accountCurrency)
+    {
+        return accounts.FirstOrDefault(account => account.Currency == accountCurrency);
+    }
+
+    /// <summary>
+    /// For each feedItem where the direction is OUT denoting a spend from the account and the item hasn't already been used in another round up
+    /// Get the remaining pence value from pounds spent by getting the mod from dividing by 100
+    /// If that value is 0 we ignore it as only want to roundup any spend over the whole pound value on a transaction
+    /// To get the roundup value then minus the pence spend from 100
+    /// </summary>
+    /// <param name="feedItems"></param>
+    /// <returns>Sum integer value of the remaining minor units from all the feedItems</returns>
     private static int GetRoundUpValue(List<FeedItems> feedItems)
     {
         var sum = 0;
         foreach (var feedItem in feedItems)
         {
-            if (feedItem.direction == "OUT")
-            {
-                var remainder = feedItem.currencyAndAmount.minorUnits % 100;
-                if (remainder != 0) sum += 100 - remainder;
-            }
+            if (feedItem is not { Direction: "OUT", AssociatedFeedRoundUp: null }) continue;
+            var remainder = feedItem.CurrencyAndAmount.MinorUnits % 100;
+            if (remainder != 0) sum += 100 - remainder;
         }
 
         return sum;
     }
 
-    private ErrorResponse GetErrorResponse(List<string> errorMessages)
+    private static ErrorResponse GetErrorResponse(List<string> errorMessages)
     {
-        var errorDetails = errorMessages.Select(errorMessage => new ErrorDetail { message = errorMessage }).ToList();
+        var errorDetails = errorMessages.Select(errorMessage => new ErrorDetail { Message = errorMessage }).ToList();
 
         return new ErrorResponse
         {
             ErrorDetail = errorDetails.ToArray(),
-            success = false
+            Success = false
         };
+    }
+
+    private static ProblemDetails GetInternalServerErrorResponse(string detail)
+    {
+        return new ProblemDetails {
+            Status = (int)HttpStatusCode.InternalServerError,
+            Title = "Internal Server Error",
+            Detail = detail};
     }
 }

@@ -1,11 +1,11 @@
 using System.Net;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using NUnit.Framework;
 using StarlingRoundUpChallenge.Helpers;
-using StarlingRoundUpChallenge.Requests;
-using StarlingRoundUpChallenge.Response;
+using StarlingRoundUpChallenge.Models.StarlingApi;
 using StarlingRoundUpChallengeTests.Mocks;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace StarlingRoundUpChallengeTests.Helpers;
 
@@ -14,6 +14,11 @@ public class ApiHelperTests
     private Mock<ILogger<ApiHelper>> _mockLogger;
     private HttpMessageHandlerMock _handlerMock;
     private ApiHelper _apiHelper;
+    private readonly  JsonSerializerOptions _serializeOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
 
     [SetUp]
     internal void SetUp(HttpStatusCode code, string jsonResponse)
@@ -24,33 +29,29 @@ public class ApiHelperTests
         {
             BaseAddress = new Uri("https://api-sandbox.starlingbank.com/api/v2/")
         };
-        _apiHelper = new ApiHelper(_mockLogger.Object, httpClient);
+        _apiHelper = new ApiHelper(httpClient, _mockLogger.Object);
     }
-    
-    //get account async
-    /*
-     * when call is successful return account // 
-     * when call returns error call logger and return null //
-     */
+
+    #region GetAccountAsync
     [Fact]
     public async Task GetAccount_WhenRequestIsSuccessful_ReturnAccountResponse()
     { 
         var expected = new Account
         {
-            accounts = new []
-            {
+            Accounts =
+            [
                 new Accounts
                 {
-                    accountUid = "123",
-                    defaultCategory = "456",
-                    currency = "GBP"
+                    AccountUid = "123",
+                    DefaultCategory = "456",
+                    Currency = "GBP"
                 }
-            }
+            ]
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.OK, jsonResponse);
         
-        var result = await _apiHelper.GetAccounts();
+        var result = await _apiHelper.GetAccountsAsync();
         result.Should().BeEquivalentTo(expected);
     }
 
@@ -58,59 +59,56 @@ public class ApiHelperTests
     public async Task GetAccount_WhenRequestReturnsError_CallLoggerAndReturnNull()
     {
         var expected = new ErrorResponse{
-            ErrorDetail = new []
-            {
+            ErrorDetail =
+            [
                 new ErrorDetail
                 {
-                    message = "Unable to get accounts"
+                    Message = "Unable to get accounts"
                 }
-            },
-            success = false
+            ],
+            Success = false
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.BadRequest, jsonResponse);
         
-        var result = await _apiHelper.GetAccounts();
+        var result = await _apiHelper.GetAccountsAsync();
         
         result.Should().BeNull();
         _mockLogger.Verify(logger => logger.Log(
                 It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, @type) => @object.ToString().Contains("Error unable to get accounts") && @type.Name == "FormattedLogValues"),
+                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to get accounts") && type.Name == "FormattedLogValues"),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);
     }
-    
-    //get settled transactions between
-    /*
-     * when call is successful return account //
-     * when call returns error call logger and return null //
-     */    
+    #endregion
+
+    #region GetSettledTransactionsBetweenAsync
     [Fact]
     public async Task GetSettledTransactionsBetween_WhenRequestIsSuccessful_ReturnFeed()
     {
         var expected = new Feed
         {
-            feedItems = new[]
-            {
+            FeedItems =
+            [
                 new FeedItems
                 {
-                    categoryUid = "123",
-                    currencyAndAmount = new CurrencyAndAmount
+                    CategoryUid = "123",
+                    CurrencyAndAmount = new CurrencyAndAmount
                     {
-                        currency = "GBP",
-                        minorUnits = 10
+                        Currency = "GBP",
+                        MinorUnits = 10
                     },
-                    direction = "OUT",
-                    feedItemUid = "456"
+                    Direction = "OUT",
+                    FeedItemUid = "456"
                 }
-            }
+            ]
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.OK, jsonResponse);
         
-        var result = await _apiHelper.GetSettledTransactionsBetween(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>());
+        var result = await _apiHelper.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>());
         result.Should().BeEquivalentTo(expected);
     }
 
@@ -118,48 +116,44 @@ public class ApiHelperTests
     public async Task GetSettledTransactionsBetween_WhenRequestReturnsError_CallLoggerAndReturnNull()
     {
         var expected = new ErrorResponse{
-            ErrorDetail = new []
-            {
+            ErrorDetail =
+            [
                 new ErrorDetail
                 {
-                    message = "Unable to get feed"
+                    Message = "Unable to get feed"
                 }
-            },
-            success = false
+            ],
+            Success = false
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.BadRequest, jsonResponse);
         
-        var result = await _apiHelper.GetSettledTransactionsBetween(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>());
+        var result = await _apiHelper.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>());
         
         result.Should().BeNull();
         _mockLogger.Verify(logger => logger.Log(
                 It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, @type) => @object.ToString().Contains("Error unable to get settled transaction between") && @type.Name == "FormattedLogValues"),
+                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to get settled transaction between") && type.Name == "FormattedLogValues"),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);
     }
-    
-    //PutSavingsGoals transactions between
-    /*
-     * when call is successful return account //
-     * when call returns error call logger and return null //
-     */  
-    
+    #endregion
+
+    #region PutSavingsGoalsAsync
     [Fact]
     public async Task PutSavingsGoals_WhenRequestIsSuccessful_ReturnCreateSavingsGoalResponse()
     {
-        var expected = new CreateOrUpdateSavingsGoalResponseV2()
+        var expected = new CreateOrUpdateSavingsGoalResponseV2
         {
-            savingsGoalUid = "123",
-            success = true
+            SavingsGoalUid = "123",
+            Success = true
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.OK, jsonResponse);
         
-        var result = await _apiHelper.PutSavingsGoals(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>());
+        var result = await _apiHelper.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>());
         result.Should().BeEquivalentTo(expected);
     }
 
@@ -167,47 +161,44 @@ public class ApiHelperTests
     public async Task PutSavingsGoals_WhenRequestReturnsError_CallLoggerAndReturnNull()
     {
         var expected = new ErrorResponse{
-            ErrorDetail = new []
-            {
+            ErrorDetail =
+            [
                 new ErrorDetail
                 {
-                    message = "Unable to create savings goal"
+                    Message = "Unable to create savings goal"
                 }
-            },
-            success = false
+            ],
+            Success = false
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.BadRequest, jsonResponse);
         
-        var result = await _apiHelper.PutSavingsGoals(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>());
+        var result = await _apiHelper.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>());
         
         result.Should().BeNull();
         _mockLogger.Verify(logger => logger.Log(
                 It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, @type) => @object.ToString().Contains("Error unable to create savings goal") && @type.Name == "FormattedLogValues"),
+                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to create savings goal") && type.Name == "FormattedLogValues"),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);
     }
-    
-    //PutMoneySavingsGoal transactions between
-    /*
-     * when call is successful return account //
-     * when call returns error call logger and return null //
-     */  
+    #endregion
+
+    #region PutMoneySavingsGoalAsync
     [Fact]
     public async Task PutMoneySavingsGoal_WhenRequestIsSuccessful_ReturnAccountResponse()
     {
         var expected = new SavingsGoalTransferResponse
         {
-            transferUid = "123",
-            success = true
+            TransferUid = "123",
+            Success = true
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.OK, jsonResponse);
         
-        var result = await _apiHelper.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>());
+        var result = await _apiHelper.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>());
         result.Should().BeEquivalentTo(expected);
     }
 
@@ -215,28 +206,28 @@ public class ApiHelperTests
     public async Task PutMoneySavingsGoal_WhenRequestReturnsError_CallLoggerAndReturnNull()
     {
         var expected = new ErrorResponse{
-            ErrorDetail = new []
-            {
+            ErrorDetail =
+            [
                 new ErrorDetail
                 {
-                    message = "Error adding money to savings goal"
+                    Message = "Error adding money to savings goal"
                 }
-            },
-            success = false
+            ],
+            Success = false
         };
-        var jsonResponse = JsonConvert.SerializeObject(expected);
+        var jsonResponse = JsonSerializer.Serialize(expected, _serializeOptions);
         SetUp(HttpStatusCode.BadRequest, jsonResponse);
         
-        var result = await _apiHelper.PutMoneySavingsGoal(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>());
+        var result = await _apiHelper.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>());
         
         result.Should().BeNull();
         _mockLogger.Verify(logger => logger.Log(
                 It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
                 It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, @type) => @object.ToString().Contains("Error adding money to savings goal") && @type.Name == "FormattedLogValues"),
+                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error adding money to savings goal") && type.Name == "FormattedLogValues"),
                 It.IsAny<Exception>(),
                 It.IsAny<Func<It.IsAnyType, Exception, string>>()),
             Times.Once);
     }
-    
+    #endregion
 }

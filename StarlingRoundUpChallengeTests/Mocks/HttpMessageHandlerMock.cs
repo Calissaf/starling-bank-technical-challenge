@@ -3,23 +3,14 @@ using System.Text;
 
 namespace StarlingRoundUpChallengeTests.Mocks;
 
-public class HttpMessageHandlerMock : HttpMessageHandler
+public class HttpMessageHandlerMock(HttpStatusCode code, string json) : HttpMessageHandler
 {
-    private HttpStatusCode _code;
-    private readonly string _json;
-    
-    public HttpMessageHandlerMock(HttpStatusCode code, string json)
-    {
-        _code = code;
-        _json = json;
-    }
-    
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
         return Task.FromResult(new HttpResponseMessage
         {
-            StatusCode = _code,
-            Content = new StringContent(_json, Encoding.UTF8, "application/json")
+            StatusCode = code,
+            Content = new StringContent(json, Encoding.UTF8, "application/json")
         });
     }
 }

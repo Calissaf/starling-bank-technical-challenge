@@ -1,9 +1,9 @@
 using Microsoft.AspNetCore.Mvc;
-using StarlingRoundUpChallenge.Requests;
+using StarlingRoundUpChallenge.Models.Requests;
 
 namespace StarlingRoundUpChallenge.Services;
 
 public interface IAccountService
 {
-    public ActionResult RoundUp(RoundUpBetweenRequest request);
+    public Task<ActionResult> RoundUp(RoundUpBetweenRequest request);
 }

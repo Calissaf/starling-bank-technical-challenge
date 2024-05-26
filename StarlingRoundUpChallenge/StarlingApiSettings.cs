@@ -1,3 +1,5 @@
+namespace StarlingRoundUpChallenge;
+
 public class StarlingApiSettings
 {
     public string BaseUri { get; set; }

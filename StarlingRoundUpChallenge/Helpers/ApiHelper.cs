@@ -1,87 +1,79 @@
 using System.Text;
+using System.Text.Json;
 using System.Web;
-using Newtonsoft.Json;
-using StarlingRoundUpChallenge.Requests;
-using StarlingRoundUpChallenge.Response;
+using StarlingRoundUpChallenge.Models.StarlingApi;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace StarlingRoundUpChallenge.Helpers;
 
-public class ApiHelper : IApiHelper
+public class ApiHelper(HttpClient client, ILogger<ApiHelper> logger) : IApiHelper
 {
-    /*
-     * should
-     *  - call starling api
-     *  - get accounts +
-     *  - get settled transactions between timestamps +
-     *  - create savings goal
-     *  - add money to savings goal
-     */
-
-    private readonly HttpClient _client;
-    private readonly ILogger<ApiHelper> _logger;
-
-    public ApiHelper(ILogger<ApiHelper> logger, HttpClient client)
+    /// <remarks>
+    /// ApiHelper logs all errors from api calls and returns null to prevent leaking sensitive information to the user 
+    /// </remarks>
+    /// 
+    private readonly  JsonSerializerOptions _serializeOptions = new()
     {
-        _logger = logger;
-        _client = client;
-    }
-    
-    public async Task<Account?> GetAccounts()
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        WriteIndented = true
+    };
+
+    public async Task<Account?> GetAccountsAsync()
     {
-        using var response = await _client.GetAsync("accounts");
+        using var response = await client.GetAsync("accounts");
         
-        if (response.IsSuccessStatusCode) return await response.Content.ReadFromJsonAsync<Account>();
+        if (response.IsSuccessStatusCode) return await response.Content.ReadFromJsonAsync<Account>(_serializeOptions);
         
         var errorMessage = GetErrorMessage(response);
-        _logger.LogError($"Error unable to get accounts. {errorMessage}");
+        logger.LogError($"Error unable to get accounts. {errorMessage}");
         return null;
     }
 
-    public async Task<Feed?> GetSettledTransactionsBetween(string accountUid, string minTransactionTimestamp, string maxTransactionTimestamp)
+    public async Task<Feed?> GetSettledTransactionsBetweenAsync(string accountUid, string minTransactionTimestamp, string maxTransactionTimestamp)
     {
-        var builder = new UriBuilder($"{_client.BaseAddress}feed/account/{accountUid}/settled-transactions-between");
+        var builder = new UriBuilder($"{client.BaseAddress}feed/account/{accountUid}/settled-transactions-between");
         var query = HttpUtility.ParseQueryString(builder.Query);
         query["minTransactionTimestamp"] = minTransactionTimestamp;
         query["maxTransactionTimestamp"] = maxTransactionTimestamp;
         builder.Query = query.ToString();
         
-        using var response = await _client.GetAsync(builder.ToString());
-        if (response.IsSuccessStatusCode) return await response.Content.ReadFromJsonAsync<Feed>();
+        using var response = await client.GetAsync(builder.ToString());
+        if (response.IsSuccessStatusCode) return await response.Content.ReadFromJsonAsync<Feed>(_serializeOptions);
 
         var errorMessage = GetErrorMessage(response);
-        _logger.LogError($"Error unable to get settled transaction between {minTransactionTimestamp} and {maxTransactionTimestamp}. {errorMessage}");
+        logger.LogError($"Error unable to get settled transaction between {minTransactionTimestamp} and {maxTransactionTimestamp}. {errorMessage}");
         return null;
     }
     
-    public async Task<CreateOrUpdateSavingsGoalResponseV2?> PutSavingsGoals(string accountUid, SavingsGoalRequestV2 savingsGoalRequestV2)
+    public async Task<CreateOrUpdateSavingsGoalResponseV2?> PutSavingsGoalsAsync(string accountUid, SavingsGoalRequestV2 savingsGoalRequestV2)
     {
-        var content = new StringContent(JsonConvert.SerializeObject(savingsGoalRequestV2), Encoding.UTF8,
+        var content = new StringContent(JsonSerializer.Serialize(savingsGoalRequestV2, _serializeOptions), Encoding.UTF8,
             "application/json");
         
-        using var response = await _client.PutAsync($"account/{accountUid}/savings-goals", content);
+        using var response = await client.PutAsync($"account/{accountUid}/savings-goals", content);
         if (response.IsSuccessStatusCode)
         {
-            return response.Content.ReadFromJsonAsync<CreateOrUpdateSavingsGoalResponseV2>().Result;
+            return response.Content.ReadFromJsonAsync<CreateOrUpdateSavingsGoalResponseV2>(_serializeOptions).Result;
         }
 
         var errorMessage = GetErrorMessage(response); 
-        _logger.LogError($"Error unable to create savings goal. {errorMessage}");
+        logger.LogError($"Error unable to create savings goal. {errorMessage}");
         return null;
     }
 
-    public async Task<SavingsGoalTransferResponse?> PutMoneySavingsGoal(string accountUid, string savingsGoalUid, string transferUid, TopUpRequestV2 topUpRequestV2)
+    public async Task<SavingsGoalTransferResponse?> PutMoneySavingsGoalAsync(string accountUid, string savingsGoalUid, string transferUid, TopUpRequestV2 topUpRequestV2)
     {
-        var content = new StringContent(JsonConvert.SerializeObject(topUpRequestV2), Encoding.UTF8,
+        var content = new StringContent(JsonSerializer.Serialize(topUpRequestV2, _serializeOptions), Encoding.UTF8,
             "application/json");
         
-        using var response = await _client.PutAsync($"account/{accountUid}/savings-goals/{savingsGoalUid}/add-money/{transferUid}", content);
+        using var response = await client.PutAsync($"account/{accountUid}/savings-goals/{savingsGoalUid}/add-money/{transferUid}", content);
         if (response.IsSuccessStatusCode)
         {
-            return response.Content.ReadFromJsonAsync<SavingsGoalTransferResponse>().Result;
+            return response.Content.ReadFromJsonAsync<SavingsGoalTransferResponse>(_serializeOptions).Result;
         }
 
         var errorMessage = GetErrorMessage(response);
-        _logger.LogError($"Error adding money to savings goal. {errorMessage}");
+        logger.LogError($"Error adding money to savings goal. {errorMessage}");
         return null;
     }
 
@@ -90,9 +82,10 @@ public class ApiHelper : IApiHelper
         try
         {
             var jsonErrorResponse = response.Content.ReadFromJsonAsync<ErrorResponse>().Result;
-            if (jsonErrorResponse is { success: true } && jsonErrorResponse.ErrorDetail.FirstOrDefault() != null)
+            if (jsonErrorResponse is { Success: true } && jsonErrorResponse.ErrorDetail.FirstOrDefault() != null)
             {
-                return jsonErrorResponse.ErrorDetail.FirstOrDefault()!.message;
+                var errorMessage = jsonErrorResponse.ErrorDetail.FirstOrDefault()?.Message;
+                if (errorMessage != null) return errorMessage;
             }
         }
         catch

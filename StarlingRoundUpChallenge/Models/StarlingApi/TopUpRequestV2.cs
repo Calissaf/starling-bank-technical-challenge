@@ -1,11 +1,10 @@
 using System.Text.Json.Serialization;
 using Newtonsoft.Json;
-using StarlingRoundUpChallenge.Response;
 
-namespace StarlingRoundUpChallenge.Requests;
+namespace StarlingRoundUpChallenge.Models.StarlingApi;
 
 public class TopUpRequestV2
 {
-    [JsonProperty("amount")]
+    [JsonPropertyName("amount")]
     public CurrencyAndAmount CurrencyAndAmount { get; set; }
 }
