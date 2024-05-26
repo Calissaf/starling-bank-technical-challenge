@@ -3,15 +3,43 @@ Technical Test for Starling Bank
 
 ## Validate/Refresh the Access Token:
 ##### - In Starling Bank Developers navigate to Sandbox Customers pick required Account and refresh/generate a new access token.
-#### - Replace the _"Authorization"_ variable in _"application.Development.json"_ file in the project with copied token. _(Remember to add "Bearer" prefix)_
+#### - Replace the _"Authorization"_ variable in the [appsettings.Development.json](appsettings.Development.json) file with copied token. _(Remember to add "Bearer" prefix)_.
 
 ## How to run the tests:
 
-#### - Using an IDE, go to project called **StarlingRoundUpTests** and run/debug.
-#### - Tests are present in ApiHelperTests and AccountServiceTests classes.
+#### Using an IDE:
+#### - go to **StarlingRoundUpTests** project.
+#### - tests are present in [ApiHelperTests](StarlingRoundUpChallengeTests/Helpers/ApiHelperTests.cs) and [AccountServiceTests](StarlingRoundUpChallengeTests/Services/AccountServiceTests.cs) classes. 
+#### - inside class files click run to run tests.
+#### Using command line:
+#### - install .NET SDK. You can download it from [.NET download page](https://dotnet.microsoft.com/en-us/download/dotnet).
+#### - open command line and navigate to the directory where projects are stored
+#### - run the tests using dotnet test command
+```console
+dotnet test
+```
 
 ## How to run the application:
-#### - Using an IDE, go to a class called **StarlingRoundUpChallenge** and run/debug.
+#### Using an IDE:
+#### - go to [StarlingRoundUpChallenge](StarlingRoundUpChallenge/StarlingRoundUpChallenge.csproj) project and run/debug.
+#### - swagger documentation will be automatically launched to use endpoints*.
+#### _*if swagger documentation fails to automatically launch navigate to [Swagger StarlingRoundUpChallenge](https://localhost:7223/swagger/index.html)_.
+#### Using command line:
+#### - install .NET SDK. You can download it from [.NET download page](https://dotnet.microsoft.com/en-us/download/dotnet).
+#### - open command line and navigate to the directory where projects are stored
+#### - restore project dependencies specified in the .csproj file using the dotnet restore command:
+```console
+dotnet restore
+```
+#### - build the project using the dotnet build command
+```console
+dotnet build
+```
+#### - run the project using dotnet run command
+```console
+dotnet run
+```
+#### - once project is successfully running navigate to swagger documentation to use endpoints. Found at [Swagger StarlingRoundUpChallenge](https://localhost:7223/swagger/index.html). 
 
 
 ## API:
