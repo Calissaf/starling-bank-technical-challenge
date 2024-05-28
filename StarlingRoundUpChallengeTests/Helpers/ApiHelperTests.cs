@@ -74,13 +74,7 @@ public class ApiHelperTests
         var result = await _apiHelper.GetAccountsAsync();
         
         result.Should().BeNull();
-        _mockLogger.Verify(logger => logger.Log(
-                It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to get accounts") && type.Name == "FormattedLogValues"),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
-            Times.Once);
+        VerifyLogging(_mockLogger, "Error unable to get accounts", LogLevel.Error, Times.Once());
     }
     #endregion
 
@@ -131,13 +125,7 @@ public class ApiHelperTests
         var result = await _apiHelper.GetSettledTransactionsBetweenAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>());
         
         result.Should().BeNull();
-        _mockLogger.Verify(logger => logger.Log(
-                It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to get settled transaction between") && type.Name == "FormattedLogValues"),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
-            Times.Once);
+        VerifyLogging(_mockLogger, "Error unable to get settled transaction between", LogLevel.Error, Times.Once());
     }
     #endregion
 
@@ -176,13 +164,7 @@ public class ApiHelperTests
         var result = await _apiHelper.PutSavingsGoalsAsync(It.IsAny<string>(), It.IsAny<SavingsGoalRequestV2>());
         
         result.Should().BeNull();
-        _mockLogger.Verify(logger => logger.Log(
-                It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error unable to create savings goal") && type.Name == "FormattedLogValues"),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
-            Times.Once);
+        VerifyLogging(_mockLogger, "Error unable to create savings goal", LogLevel.Error, Times.Once());
     }
     #endregion
 
@@ -221,13 +203,23 @@ public class ApiHelperTests
         var result = await _apiHelper.PutMoneySavingsGoalAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<TopUpRequestV2>());
         
         result.Should().BeNull();
-        _mockLogger.Verify(logger => logger.Log(
-                It.Is<LogLevel>(logLevel => logLevel == LogLevel.Error),
-                It.IsAny<EventId>(),
-                It.Is<It.IsAnyType>((@object, type) => @object.ToString().Contains("Error adding money to savings goal") && type.Name == "FormattedLogValues"),
-                It.IsAny<Exception>(),
-                It.IsAny<Func<It.IsAnyType, Exception, string>>()),
-            Times.Once);
+        VerifyLogging(_mockLogger, "Error adding money to savings goal", LogLevel.Error, Times.Once());
     }
     #endregion
+    
+    private static void VerifyLogging<T>(Mock<ILogger<T>> logger, string expectedMessage, LogLevel expectedLogLevel,
+        Times? times = null)
+    {
+        times ??= Times.Once();
+
+        Func<object, Type, bool> state = (v, _) => v.ToString().Contains(expectedMessage);
+
+        logger.Verify(
+            x => x.Log(
+                It.Is<LogLevel>(l => l == expectedLogLevel),
+                It.IsAny<EventId>(),
+                It.Is<It.IsAnyType>((v, t) => state(v, t)),
+                It.IsAny<Exception>(),
+                It.Is<Func<It.IsAnyType, Exception, string>>((v, t) => true)), (Times)times);
+    }
 }

@@ -31,9 +31,9 @@ builder.Services.AddHttpClient<IApiHelper, ApiHelper>((provider, client) =>
     client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue(settings.MediaType));
 
     client.DefaultRequestHeaders.Add("Authorization", settings.Authorization);
-}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+}).ConfigurePrimaryHttpMessageHandler(provider => new SocketsHttpHandler
 {
-    PooledConnectionLifetime = TimeSpan.FromMinutes(15)
+    PooledConnectionLifetime = TimeSpan.FromMinutes(provider.GetRequiredService<IOptions<StarlingApiSettings>>().Value.ConnectionLifetimeMinutes)
 }).SetHandlerLifetime(Timeout.InfiniteTimeSpan);
 
 var app = builder.Build();

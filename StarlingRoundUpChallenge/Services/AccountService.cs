@@ -9,6 +9,7 @@ namespace StarlingRoundUpChallenge.Services;
 
 public class AccountService(IApiHelper apiHelper) : IAccountService
 {
+    private const string RFC3339Format = "yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'";
     public async Task<ActionResult> RoundUp(RoundUpBetweenRequest request)
     {
         RoundUpBetweenResponse? response;
@@ -47,8 +48,8 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
         
         // get transfer feed for default category
         var allFeedItems = await apiHelper.GetSettledTransactionsBetweenAsync(account.AccountUid,
-            request.MinTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"),
-            request.MaxTransactionTimestamp.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'Z'"));
+            request.MinTransactionTimestamp.ToString(RFC3339Format),
+            request.MaxTransactionTimestamp.ToString(RFC3339Format));
 
         if (allFeedItems == null)
         {
@@ -59,10 +60,11 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
             };
         }
         
+        // getting default category feed items as only want transactions from the main account and not any spaces tied to the user
         var mainFeedItems = allFeedItems.FeedItems.Where(x => x.CategoryUid == account.DefaultCategory).ToList();
         
         //calculate roundups
-        var roundUp = 0;
+        long roundUp = 0;
         if (mainFeedItems.Count != 0)
         {
             roundUp = GetRoundUpValue(mainFeedItems);
@@ -93,7 +95,9 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
             };
         }
 
-        // returning ok as no money to add to savings goal
+        // returning ok when no money to add to savings goal
+        // assume user would still want to create a savings goal that could be used for future roundups even if none were resulting from the period specified
+        // this could then be used for a recurring roundup feature in the future
         if (roundUp == 0)
         {
             response = new RoundUpBetweenResponse
@@ -106,7 +110,7 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
         }
         
         // add money to savings goal
-        var transferUid = Guid.NewGuid().ToString(); //don't need to test is unique as is first transaction for the savings goal so always will be
+        var transferUid = Guid.NewGuid().ToString(); // don't need to test is unique as is first transaction for the savings goal so always will be
         var topUpRequest = new TopUpRequestV2
         {
             CurrencyAndAmount = new CurrencyAndAmount
@@ -155,9 +159,9 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
     /// </summary>
     /// <param name="feedItems"></param>
     /// <returns>Sum integer value of the remaining minor units from all the feedItems</returns>
-    private static int GetRoundUpValue(List<FeedItems> feedItems)
+    private static long GetRoundUpValue(List<FeedItems> feedItems)
     {
-        var sum = 0;
+        long sum = 0;
         foreach (var feedItem in feedItems)
         {
             if (feedItem is not { Direction: "OUT", AssociatedFeedRoundUp: null }) continue;
@@ -184,6 +188,7 @@ public class AccountService(IApiHelper apiHelper) : IAccountService
         return new ProblemDetails {
             Status = (int)HttpStatusCode.InternalServerError,
             Title = "Internal Server Error",
-            Detail = detail};
+            Detail = detail
+        };
     }
 }

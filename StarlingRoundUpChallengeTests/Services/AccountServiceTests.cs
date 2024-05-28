@@ -45,7 +45,9 @@ public class AccountServiceTests
             }
         };
         
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = "Min timestamp must be before max timestamp"}}});
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = [new ErrorDetail{Message = "Min timestamp must be before max timestamp"}
+            ]
+        });
         
         var result = await _accountService.RoundUp(request);
 
@@ -68,7 +70,9 @@ public class AccountServiceTests
             }
         };
         
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = "Invalid image"}}});
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = [new ErrorDetail{Message = "Invalid image"}
+            ]
+        });
         
         var result = await _accountService.RoundUp(request);
 
@@ -108,8 +112,11 @@ public class AccountServiceTests
     [Fact]
     public async Task RoundUp_WhenNoAccountsWithRequestedCurrencyType_ReturnBadRequest()
     {
-        _mockApiHelper.Setup(x => x.GetAccountsAsync()).ReturnsAsync(new Account{Accounts = new []{new Accounts{Currency = "EUR"}}});
-        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = new []{new ErrorDetail{Message = $"Account with currency type: {DefaultRequest.AccountCurrency} not found"}}, Success = false});
+        _mockApiHelper.Setup(x => x.GetAccountsAsync()).ReturnsAsync(new Account{Accounts = [new Accounts{Currency = "EUR"}
+            ]
+        });
+        var expected = new BadRequestObjectResult(new ErrorResponse {ErrorDetail = [new ErrorDetail{Message = $"Account with currency type: {DefaultRequest.AccountCurrency} not found"}
+        ], Success = false});
         
         var result = await _accountService.RoundUp(DefaultRequest);
 
@@ -298,7 +305,7 @@ public class AccountServiceTests
     }
     
     [Fact]
-    public async Task RoundUp_WhenPutMoneySavingsGoalsSuccessIsTrue_ReturnHttpOk() //ToDo check response body
+    public async Task RoundUp_WhenPutMoneySavingsGoalsSuccessIsTrue_ReturnHttpOk()
     {
         Setup();
         
@@ -320,8 +327,8 @@ public class AccountServiceTests
         //round up = 76
         var feed = new Feed
         {
-            FeedItems = new[]
-            {
+            FeedItems =
+            [
                 new FeedItems
                 {
                     CategoryUid = "456",
@@ -386,20 +393,20 @@ public class AccountServiceTests
                         GoalCategoryUid = "789"
                     }
                 }
-            }
+            ]
         };
         
         var account = new Account
         {
-            Accounts = new []
-            {
+            Accounts =
+            [
                 new Accounts
                 {
                     AccountUid = "123",
                     DefaultCategory = "456",
                     Currency = "GBP"
                 }
-            }
+            ]
         };
         var createSavingsGoalResponse = new CreateOrUpdateSavingsGoalResponseV2
         {

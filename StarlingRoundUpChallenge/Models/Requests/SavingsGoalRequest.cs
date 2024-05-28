@@ -17,5 +17,5 @@ public class SavingsGoalRequest
 
 public class Target
 {
-    public int MinorUnits { get; set; }
+    public long MinorUnits { get; set; }
 }
