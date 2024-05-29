@@ -3,7 +3,7 @@ Technical Test for Starling Bank
 
 ## Validate/Refresh the Access Token:
 * #### In Starling Bank Developers navigate to Sandbox Customers pick required Account and refresh/generate a new access token.
-* #### Replace the _"Authorization"_ variable in the [appsettings.Development.json](appsettings.Development.json) file with copied token. _(Remember to add "Bearer" prefix)_.
+* #### Replace the _"Authorization"_ variable in the [appsettings.Development.json](StarlingRoundUpChallenge/appsettings.Development.json) file with copied token. _(Remember to add "Bearer" prefix)_.
 
 ## How to run the tests:
 
