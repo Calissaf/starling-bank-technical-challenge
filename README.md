@@ -21,7 +21,7 @@ dotnet test
 
 ## How to run the application:
 #### Using an IDE:
-* #### go to [StarlingRoundUpChallenge](StarlingRoundUpChallenge/StarlingRoundUpChallenge.csproj) project and run/debug.
+* #### go to [StarlingRoundUpChallenge](StarlingRoundUpChallenge) project and run/debug.
 * #### swagger documentation will be automatically launched to use endpoints*.
   * #### _*if swagger documentation fails to automatically launch navigate to [Swagger StarlingRoundUpChallenge](https://localhost:7223/swagger/index.html)_.
 #### Using command line:
